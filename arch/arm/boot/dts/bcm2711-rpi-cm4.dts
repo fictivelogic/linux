@@ -574,6 +574,7 @@
 
 &pcie0 {
        brcm,enable-l1ss;
+       max-link-speed = <1>;
 };
 
 &sdhost {
