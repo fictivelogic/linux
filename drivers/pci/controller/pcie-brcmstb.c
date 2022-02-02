@@ -694,6 +694,7 @@ static bool brcm_pcie_link_up(struct brcm_pcie *pcie)
 	u32 val = readl(pcie->base + PCIE_MISC_PCIE_STATUS);
 	u32 dla = FIELD_GET(PCIE_MISC_PCIE_STATUS_PCIE_DL_ACTIVE_MASK, val);
 	u32 plu = FIELD_GET(PCIE_MISC_PCIE_STATUS_PCIE_PHYLINKUP_MASK, val);
+    dev_err(pcie->dev, "val %08x, dla %08x, plu %08x\n", val, dla, plu);
 
 	return dla && plu;
 }
@@ -951,6 +952,7 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 	tmp &= ~PCIE_MISC_RC_BAR3_CONFIG_LO_SIZE_MASK;
 	writel(tmp, base + PCIE_MISC_RC_BAR3_CONFIG_LO);
 
+	dev_info(dev, "pcie->gen: %u\n", pcie->gen);
 	if (pcie->gen)
 		brcm_pcie_set_gen(pcie, pcie->gen);
 
@@ -959,9 +961,10 @@ static int brcm_pcie_setup(struct brcm_pcie *pcie)
 
 	/*
 	 * Give the RC/EP time to wake up, before trying to configure RC.
-	 * Intermittently check status for link-up, up to a total of 100ms.
+	 * Intermittently check status for link-up, up to a total of 100ms. (10 seconds now SR:)
 	 */
-	for (i = 0; i < 100 && !brcm_pcie_link_up(pcie); i += 5)
+    dev_err(dev, "waiting for link up ...\n");
+	for (i = 0; i < 1000 && !brcm_pcie_link_up(pcie); i += 5)
 		msleep(5);
 
 	if (!brcm_pcie_link_up(pcie)) {
@@ -1266,7 +1269,8 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 		return PTR_ERR(pcie->clk);
 
 	ret = of_pci_get_max_link_speed(np);
-	pcie->gen = (ret < 0) ? 0 : ret;
+	dev_info(pcie->dev, "of_pcie_get_max_link_speed:%d\n", ret);
+	pcie->gen = (ret < 0) ? 1 : ret;
 
 	pcie->ssc = of_property_read_bool(np, "brcm,enable-ssc");
 	pcie->l1ss = of_property_read_bool(np, "brcm,enable-l1ss");
@@ -1294,8 +1298,10 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 	}
 
 	ret = brcm_pcie_setup(pcie);
-	if (ret)
+	if (ret) {
+		dev_err(&pdev->dev, "Failed at PCIE SETUP\n");
 		goto fail;
+	}
 
 	pcie->hw_rev = readl(pcie->base + PCIE_MISC_REVISION);
 
@@ -1315,6 +1321,7 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 
 	return pci_host_probe(bridge);
 fail:
+    dev_err(pcie->dev, "brcm is calling remove due to failure.\n");
 	__brcm_pcie_remove(pcie);
 	return ret;
 }
